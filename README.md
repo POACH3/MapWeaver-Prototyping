@@ -14,20 +14,21 @@ MapWeaver is a tool for creating tabletop RPG maps and managing and playing game
 
 This repo holds code that is disposable and of limited scope. The intent is to play around with and better understand different image processing methods.
 
-A primary goal of MapWeaver is to import user maps and assist the them in the creation of virtual terrain. Key elements are the automatic detection of both the gameplay grid as well as terrain feature such as walls/buildings, trees, and water.
+A primary goal of MapWeaver is to import user maps and assist them in the creation of virtual terrain. Key elements are the automatic detection of both the gameplay grid as well as terrain features (such as walls/buildings, trees, and water).
+
+Ultimately, the characteristics assigned to each virtual terrain type will drive gameplay features like enforced player movement, fog of war (through 2D ray-tracing), cover from opponent attacks, and concealment.
 
 
 ## Project Status
 
 ### Planned
-- Grid detection
-- Semantic segmentation
-- Convolutional neural network
+- Grid detection (Hough transform, convolutional neural network)
+- Terrain detection (semantic segmentation, convolutional neural network)
 - Synthetic data generation
 
 
 ### Known Limitations
-
+-   
 
 <br>
 <br>
