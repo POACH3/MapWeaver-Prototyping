@@ -1,0 +1,44 @@
+# Ignore virtual environment
+.venv/
+
+# Ignore PyCharm project files
+.idea/
+
+# Ignore Python bytecode and cache
+__pycache__/
+*.py[cod]
+
+# Ignore OS-specific hidden files
+.DS_Store
+Thumbs.db
+
+# Ignore log files and temporary files
+*.log
+*.swp
+*.swo
+
+# Ignore build artifacts
+dist/
+build/
+*.egg-info/
+*.eggs/
+
+# Ignore test coverage data
+.coverage
+*.coverage
+htmlcov/
+
+# Ignore Jupyter Notebook checkpoints (if used)
+.ipynb_checkpoints/
+
+# Ignore environment variable/config files
+.env
+*.env
+
+# Ignore compiled Python files
+*.pyo
+*.pyd
+
+# Ignore IDE specific files
+.vscode/  # If you use VSCode alongside PyCharm
+*.iml
