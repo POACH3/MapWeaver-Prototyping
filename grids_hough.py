@@ -158,14 +158,41 @@ if horizontal_gap:
 
 """
 
+def draw_grid(coordinate, interval, image):
+    """
+    Draws a grid on the image.
+
+    Args:
+        coordinate (tuple): The (x, y) coordinate of start of the grid (top left intersection).
+        interval (int): The interval length of the grid.
+        image (numpy.ndarray): The image to draw on.
+    """
+
+    x, y = coordinate[0], coordinate[1] # first vertical and first horizontal lines of the grid
+
+    # get the size of the image
+    height, width = image.shape[:2]
+
+    # find how many lines to draw
+    num_vert_lines = ((width - x) // interval) + 1
+    num_horiz_lines = ((height - y) // interval) + 1
+
+    # iterate through and draw
+    for i in range(num_vert_lines):
+        cv2.line(image, (x, 0), (x, height), (255, 255, 0), 1)
+        x += interval
+
+    for i in range(num_horiz_lines):
+        cv2.line(image, (0, y), (width, y), (255, 255, 0), 1)
+        y += interval
 
 
 # load image (grayscale)
-image = cv2.imread('map2.jpg', cv2.IMREAD_GRAYSCALE)
+image = cv2.imread('map1.jpg', cv2.IMREAD_GRAYSCALE)
 
 # gaussian blur
 image = cv2.GaussianBlur(image, (5, 5), 0)
-
+# canny seems to do better without gaussian blur, sobel better with
 
 
 # CANNY EDGE DETECT
@@ -207,47 +234,52 @@ lines_sobel_y = cv2.HoughLinesP(y_edges_thresholded, 1, np.pi / 180, threshold=5
 # convert to color to draw lines for matplotlib
 image_color = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
 
-canny_edge_detection = image_color.copy()
+canny_lines = image_color.copy()
 vertical_lines, horizontal_lines = filter_horiz_vert(lines_canny)
-draw_hough(vertical_lines, horizontal_lines, canny_edge_detection)
+draw_hough(vertical_lines, horizontal_lines, canny_lines)
 
-sobel_edge_detection = image_color.copy()
+sobel_lines = image_color.copy()
 vertical_lines, horizontal_lines = filter_horiz_vert(lines_sobel)
-draw_hough(vertical_lines, horizontal_lines, sobel_edge_detection)
+draw_hough(vertical_lines, horizontal_lines, sobel_lines)
 
-sobel_x_edge_detection = image_color.copy()
+sobel_x_lines = image_color.copy()
 vertical_lines, horizontal_lines = filter_horiz_vert(lines_sobel_x)
-draw_hough(vertical_lines, horizontal_lines, sobel_x_edge_detection)
+draw_hough(vertical_lines, horizontal_lines, sobel_x_lines)
 
-sobel_y_edge_detection = image_color.copy()
+sobel_y_lines = image_color.copy()
 vertical_lines, horizontal_lines = filter_horiz_vert(lines_sobel_y)
-draw_hough(vertical_lines, horizontal_lines, sobel_y_edge_detection)
+draw_hough(vertical_lines, horizontal_lines, sobel_y_lines)
+
+
+color_canny = cv2.cvtColor(edges_canny.copy(), cv2.COLOR_GRAY2BGR)
+draw_grid((50,10), 25, color_canny)
+cv2.imwrite('grid_test.jpg', color_canny)
 
 
 
 # display image
 plt.figure(figsize=(10, 10))
-plt.imshow(cv2.cvtColor(canny_edge_detection, cv2.COLOR_BGR2RGB))  # Convert from BGR to RGB for correct color display
-plt.axis('off')  # Hide axis for cleaner display
+plt.imshow(cv2.cvtColor(canny_lines, cv2.COLOR_BGR2RGB))
+plt.axis('off')
 plt.show()
 
 plt.figure(figsize=(10, 10))
-plt.imshow(cv2.cvtColor(sobel_edge_detection, cv2.COLOR_BGR2RGB))  # Convert from BGR to RGB for correct color display
-plt.axis('off')  # Hide axis for cleaner display
+plt.imshow(cv2.cvtColor(sobel_lines, cv2.COLOR_BGR2RGB))
+plt.axis('off')
 plt.show()
 
 plt.figure(figsize=(10, 10))
-plt.imshow(cv2.cvtColor(sobel_x_edge_detection, cv2.COLOR_BGR2RGB))  # Convert from BGR to RGB for correct color display
-plt.axis('off')  # Hide axis for cleaner display
+plt.imshow(cv2.cvtColor(sobel_x_lines, cv2.COLOR_BGR2RGB))
+plt.axis('off')
 plt.show()
 
 plt.figure(figsize=(10, 10))
-plt.imshow(cv2.cvtColor(sobel_y_edge_detection, cv2.COLOR_BGR2RGB))  # Convert from BGR to RGB for correct color display
-plt.axis('off')  # Hide axis for cleaner display
+plt.imshow(cv2.cvtColor(sobel_y_lines, cv2.COLOR_BGR2RGB))
+plt.axis('off')
 plt.show()
 
 # save line fit image
-cv2.imwrite('lines_canny.jpg', canny_edge_detection)
-cv2.imwrite('lines_sobel.jpg', sobel_edge_detection)
-cv2.imwrite('lines_sobel_x.jpg', sobel_x_edge_detection)
-cv2.imwrite('lines_sobel_y.jpg', sobel_y_edge_detection)
+cv2.imwrite('lines_canny.jpg', canny_lines)
+cv2.imwrite('lines_sobel.jpg', sobel_lines)
+cv2.imwrite('lines_sobel_x.jpg', sobel_x_lines)
+cv2.imwrite('lines_sobel_y.jpg', sobel_y_lines)
