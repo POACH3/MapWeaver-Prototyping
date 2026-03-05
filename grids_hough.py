@@ -158,32 +158,44 @@ if horizontal_gap:
 
 """
 
-def draw_grid(coordinate, interval, image):
+def draw_grid(intersection, interval, image):
     """
     Draws a grid on the image.
 
     Args:
-        coordinate (tuple): The (x, y) coordinate of start of the grid (top left intersection).
+        intersection (tuple): The (x, y) coordinate of any grid intersection.
         interval (int): The interval length of the grid.
         image (numpy.ndarray): The image to draw on.
     """
-
-    x, y = coordinate[0], coordinate[1] # first vertical and first horizontal lines of the grid
-
-    # get the size of the image
+    x, y = intersection[0], intersection[1] # first vertical and first horizontal lines of the grid
     height, width = image.shape[:2]
 
     # find how many lines to draw
-    num_vert_lines = ((width - x) // interval) + 1
-    num_horiz_lines = ((height - y) // interval) + 1
+    num_vert_left = (x // interval) + 1
+    num_vert_right = ((width - x) // interval) + 1
+    num_horiz_top = (y // interval) + 1
+    num_horiz_bottom = ((height - y) // interval) + 1
+
+    # cv2.line(image, (x, 0), (x, height), (0, 0, 255), 2)
+    # cv2.line(image, (0, y), (width, y), (0, 0, 255), 2)
 
     # iterate through and draw
-    for i in range(num_vert_lines):
-        cv2.line(image, (x, 0), (x, height), (255, 255, 0), 1)
+    for i in range(num_vert_left):
+        cv2.line(image, (x, 0), (x, height), (0, 255, 0), 4)
+        x -= interval
+
+    x = intersection[0] + interval
+    for i in range(num_vert_right):
+        cv2.line(image, (x, 0), (x, height), (0, 0, 255), 2)
         x += interval
 
-    for i in range(num_horiz_lines):
-        cv2.line(image, (0, y), (width, y), (255, 255, 0), 1)
+    for i in range(num_horiz_top):
+        cv2.line(image, (0, y), (width, y), (0, 255, 0), 4)
+        y -= interval
+
+    y = intersection[1] + interval
+    for i in range(num_horiz_bottom):
+        cv2.line(image, (0, y), (width, y), (0, 0, 255), 2)
         y += interval
 
 
@@ -252,31 +264,31 @@ draw_hough(vertical_lines, horizontal_lines, sobel_y_lines)
 
 
 color_canny = cv2.cvtColor(edges_canny.copy(), cv2.COLOR_GRAY2BGR)
-draw_grid((50,10), 25, color_canny)
+draw_grid((800,700), 100, color_canny)
 cv2.imwrite('grid_test.jpg', color_canny)
 
 
 
 # display image
-plt.figure(figsize=(10, 10))
-plt.imshow(cv2.cvtColor(canny_lines, cv2.COLOR_BGR2RGB))
-plt.axis('off')
-plt.show()
-
-plt.figure(figsize=(10, 10))
-plt.imshow(cv2.cvtColor(sobel_lines, cv2.COLOR_BGR2RGB))
-plt.axis('off')
-plt.show()
-
-plt.figure(figsize=(10, 10))
-plt.imshow(cv2.cvtColor(sobel_x_lines, cv2.COLOR_BGR2RGB))
-plt.axis('off')
-plt.show()
-
-plt.figure(figsize=(10, 10))
-plt.imshow(cv2.cvtColor(sobel_y_lines, cv2.COLOR_BGR2RGB))
-plt.axis('off')
-plt.show()
+# plt.figure(figsize=(10, 10))
+# plt.imshow(cv2.cvtColor(canny_lines, cv2.COLOR_BGR2RGB))
+# plt.axis('off')
+# plt.show()
+#
+# plt.figure(figsize=(10, 10))
+# plt.imshow(cv2.cvtColor(sobel_lines, cv2.COLOR_BGR2RGB))
+# plt.axis('off')
+# plt.show()
+#
+# plt.figure(figsize=(10, 10))
+# plt.imshow(cv2.cvtColor(sobel_x_lines, cv2.COLOR_BGR2RGB))
+# plt.axis('off')
+# plt.show()
+#
+# plt.figure(figsize=(10, 10))
+# plt.imshow(cv2.cvtColor(sobel_y_lines, cv2.COLOR_BGR2RGB))
+# plt.axis('off')
+# plt.show()
 
 # save line fit image
 cv2.imwrite('lines_canny.jpg', canny_lines)
