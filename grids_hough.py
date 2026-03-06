@@ -25,6 +25,7 @@ NOTES:
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.cluster import DBSCAN
 
 
 
@@ -200,7 +201,7 @@ def draw_grid(intersection, interval, image):
 
 
 # load image (grayscale)
-image = cv2.imread('map1.jpg', cv2.IMREAD_GRAYSCALE)
+image = cv2.imread('map2.jpg', cv2.IMREAD_GRAYSCALE)
 
 # gaussian blur
 image = cv2.GaussianBlur(image, (5, 5), 0)
@@ -295,3 +296,88 @@ cv2.imwrite('lines_canny.jpg', canny_lines)
 cv2.imwrite('lines_sobel.jpg', sobel_lines)
 cv2.imwrite('lines_sobel_x.jpg', sobel_x_lines)
 cv2.imwrite('lines_sobel_y.jpg', sobel_y_lines)
+
+
+# get points for each hough line
+vertical_lines, horizontal_lines = filter_horiz_vert(lines_sobel)
+
+x_points = []
+y_points = []
+for line in vertical_lines:
+    x1, y1, x2, y2 = line
+    x_points.append(x1)
+    x_points.append(x2)
+
+for line in horizontal_lines:
+    x1, y1, x2, y2 = line
+    y_points.append(y1)
+    y_points.append(y2)
+
+x_points_2d = np.array(x_points).reshape(-1, 1)
+y_points_2d = np.array(y_points).reshape(-1, 1)
+
+# feed into DBSCAN
+dbscan = DBSCAN(eps=10, min_samples=2)
+x_labels = dbscan.fit_predict(x_points_2d)
+y_labels = dbscan.fit_predict(y_points_2d)
+
+print("x_labels: ", x_labels)
+print("y_labels: ", y_labels)
+
+# take average of clusters
+dbscan_sobel = sobel_lines.copy()
+height, width = dbscan_sobel.shape[:2]
+
+# count = -1
+# for i in range(len(x_labels)):
+#     if x_labels[i] > count:
+#         count += 1
+clusters = {}
+num_clusters = {}
+x_agg = 0
+x_averages = []
+
+print("x vals")
+for i in range(len(x_labels)):
+    if x_labels[i] not in clusters:
+        clusters[x_labels[i]] = 0
+    if x_labels[i] not in num_clusters:
+        num_clusters[x_labels[i]] = 0
+
+        clusters[x_labels[i]] += x_points[i]
+        num_clusters[x_labels[i]] += 1
+
+for i in range(len(clusters)):
+    x_averages.append(clusters[i] // num_clusters[i])
+
+print("x averages: ", x_averages)
+
+for i in range(len(x_averages)):
+    cv2.line(dbscan_sobel, (x_averages[i], 0), (x_averages[i], height), (255, 255, 0), 2)
+
+
+# count = -1
+# for i in range(len(y_labels)):
+#     if y_labels[i] > count:
+#         count += 1
+
+y_agg = 0
+y_averages = []
+for i in range(len(y_labels)):
+    if y_labels[i] not in clusters:
+        clusters[y_labels[i]] = 0
+    if y_labels[i] not in num_clusters:
+        num_clusters[y_labels[i]] = 0
+
+        clusters[y_labels[i]] += y_points[i]
+        num_clusters[y_labels[i]] += 1
+
+for i in range(len(clusters)):
+    y_averages.append(clusters[i] // num_clusters[i])
+
+for i in range(len(y_averages)):
+    cv2.line(dbscan_sobel, (0, y_averages[i]), (width, y_averages[i]), (255, 255, 0), 2)
+
+cv2.imwrite('dbscan_sobel.jpg', dbscan_sobel)
+
+# vote on intervals
