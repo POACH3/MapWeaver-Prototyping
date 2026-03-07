@@ -21,8 +21,11 @@ Ultimately, the characteristics assigned to each virtual terrain type will drive
 
 ## Project Status
 
+## Current 
+- Grid detection by clustering Hough lines (Hough transform and DBSCAN)
+
 ### Planned
-- Grid detection (Hough transform, convolutional neural network)
+- Grid detection with convolutional neural network
 - Terrain detection (semantic segmentation, convolutional neural network)
 - Synthetic data generation
 
