@@ -201,10 +201,10 @@ def draw_grid(intersection, interval, image):
 
 
 # load image (grayscale)
-image = cv2.imread('map2.jpg', cv2.IMREAD_GRAYSCALE)
+image = cv2.imread('map1.jpg', cv2.IMREAD_GRAYSCALE)
 
 # gaussian blur
-image = cv2.GaussianBlur(image, (5, 5), 0)
+image = cv2.GaussianBlur(image, (5, 5), 1)
 # canny seems to do better without gaussian blur, sobel better with
 
 
@@ -317,7 +317,7 @@ x_points_2d = np.array(x_points).reshape(-1, 1)
 y_points_2d = np.array(y_points).reshape(-1, 1)
 
 # feed into DBSCAN
-dbscan = DBSCAN(eps=10, min_samples=2)
+dbscan = DBSCAN(eps=25, min_samples=4)
 x_labels = dbscan.fit_predict(x_points_2d)
 y_labels = dbscan.fit_predict(y_points_2d)
 
@@ -328,55 +328,46 @@ print("y_labels: ", y_labels)
 dbscan_sobel = sobel_lines.copy()
 height, width = dbscan_sobel.shape[:2]
 
-# count = -1
-# for i in range(len(x_labels)):
-#     if x_labels[i] > count:
-#         count += 1
-clusters = {}
-num_clusters = {}
-x_agg = 0
-x_averages = []
 
-print("x vals")
+x_clusters = {}
+num_x_clusters = {}
 for i in range(len(x_labels)):
-    if x_labels[i] not in clusters:
-        clusters[x_labels[i]] = 0
-    if x_labels[i] not in num_clusters:
-        num_clusters[x_labels[i]] = 0
+    if x_labels[i] != -1:
+        if x_labels[i] not in x_clusters:
+            x_clusters[x_labels[i]] = 0
+        if x_labels[i] not in num_x_clusters:
+            num_x_clusters[x_labels[i]] = 0
 
-        clusters[x_labels[i]] += x_points[i]
-        num_clusters[x_labels[i]] += 1
+            x_clusters[x_labels[i]] += x_points[i]
+            num_x_clusters[x_labels[i]] += 1
 
-for i in range(len(clusters)):
-    x_averages.append(clusters[i] // num_clusters[i])
+x_averages = []
+for i in range(len(x_clusters)):
+    x_averages.append(x_clusters[i] / num_x_clusters[i])
 
-print("x averages: ", x_averages)
 
 for i in range(len(x_averages)):
-    cv2.line(dbscan_sobel, (x_averages[i], 0), (x_averages[i], height), (255, 255, 0), 2)
+    cv2.line(dbscan_sobel, (int(x_averages[i]), 0), (int(x_averages[i]), height), (255, 255, 0), 2)
 
 
-# count = -1
-# for i in range(len(y_labels)):
-#     if y_labels[i] > count:
-#         count += 1
-
-y_agg = 0
-y_averages = []
+y_clusters = {}
+num_y_clusters = {}
 for i in range(len(y_labels)):
-    if y_labels[i] not in clusters:
-        clusters[y_labels[i]] = 0
-    if y_labels[i] not in num_clusters:
-        num_clusters[y_labels[i]] = 0
+    if y_labels[i] != -1:
+        if y_labels[i] not in y_clusters:
+            y_clusters[y_labels[i]] = 0
+        if y_labels[i] not in num_y_clusters:
+            num_y_clusters[y_labels[i]] = 0
 
-        clusters[y_labels[i]] += y_points[i]
-        num_clusters[y_labels[i]] += 1
+            y_clusters[y_labels[i]] += y_points[i]
+            num_y_clusters[y_labels[i]] += 1
 
-for i in range(len(clusters)):
-    y_averages.append(clusters[i] // num_clusters[i])
+y_averages = []
+for i in range(len(y_clusters)):
+    y_averages.append(y_clusters[i] / num_y_clusters[i])
 
 for i in range(len(y_averages)):
-    cv2.line(dbscan_sobel, (0, y_averages[i]), (width, y_averages[i]), (255, 255, 0), 2)
+    cv2.line(dbscan_sobel, (0, int(y_averages[i])), (width, int(y_averages[i])), (255, 255, 0), 2)
 
 cv2.imwrite('dbscan_sobel.jpg', dbscan_sobel)
 
