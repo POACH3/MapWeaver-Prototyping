@@ -21,7 +21,7 @@ Ultimately, the characteristics assigned to each virtual terrain type will drive
 
 ## Project Status
 
-## Current 
+### Current 
 - Grid detection by clustering Hough lines (Hough transform and DBSCAN)
 
 ### Planned
