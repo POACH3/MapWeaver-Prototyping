@@ -264,6 +264,7 @@ def merge_inline(lines, epsilon):
     Merge nearby parallel (ish) lines within epsilon distance.
 
     Notes:
+        seems to favor top or left endpoint (for vertical lines)
         sort by average instead of min?
         average greedily in both directions to avoid bias?
 
@@ -369,14 +370,88 @@ def merge_inline(lines, epsilon):
 
     return merged_lines
 
-def estimate_interval():
+def estimate_interval(lines, epsilon):
     """
     vote on intervals (lines vote or just do the mode of gaps between adjacent lines and check that the SD is low).
     do second round and check if the intervals are multiples (within tolerance) of good candidate intervals.
 
-    :return:
+    Args:
+        lines (list): list of lines in the format (x1, y1, x2, y2)
+        epsilon (int): the allowed error for a vote to still count for an interval
+
+    Returns:
+        likely_interval (int): the voted interval
     """
-    pass
+    # votes = {}
+    # for i in range(len(lines)):
+    #     for j in range(i + 1, len(lines)):
+            # go through the dictionary to see if there is an interval that works (within epsilon)
+
+            # record all intervals, then average all the ones within epsilon of each other
+    adj_intervals = []
+    votes = {}
+
+    x1, y1, x2, y2 = lines[0]
+    if abs(x2 - x1) < abs(y2 - y1): # case lines are vertical
+        line_orientation = 0
+    else:
+        line_orientation = 1
+
+    # record all adjacent intervals
+    for i in range(len(lines)-1):
+        adj_intervals.append(int(abs(lines[i+1][line_orientation] - lines[i][line_orientation])))
+
+    # average intervals within epsilon and round
+    grouped_intervals = []
+    for interval in adj_intervals:
+        added = False
+        for group in grouped_intervals:
+            # calculate the current middle of the group (average of existing intervals)
+            group_middle = sum(group) / len(group)
+
+            # interval within epsilon of the group's middle?
+            if abs(group_middle - interval) <= epsilon:
+                group.append(interval)
+                added = True
+                break
+
+        if not added: # start new group
+            grouped_intervals.append([interval])
+
+    for group in grouped_intervals:
+        avg_interval = sum(group) / len(group)
+        votes[avg_interval] = len(group)
+
+    candidate_intervals = list(votes.keys())
+
+    # go through all other (non-adjacent) intervals and check for multiples of highest voted interval
+    for i in range(len(lines) - 2):
+        for j in range(i + 2, len(lines)):  # j starts from i+2 to avoid adjacent intervals
+            nonadj_interval = int(abs(lines[j][line_orientation] - lines[i][line_orientation]))
+
+            for k in range(len(candidate_intervals)):
+                # if nonadj_interval % candidate_intervals[k] < epsilon: # doesn't allow for more error for higher multiple
+                #     votes[candidate_intervals[k]] += 1
+
+                candidate_interval = candidate_intervals[k]
+                relative_epsilon = epsilon * candidate_interval
+
+                # check if the interval is a multiple of the candidate interval (with relative tolerance)
+                if abs(nonadj_interval % candidate_interval) < relative_epsilon:
+                    votes[candidate_interval] += 1 # this allows one interval to vote multiple times
+
+    # check the standard deviation of each interval group– should be low, indicating high consensus for whatever candidate they vote for
+    # sd = np.std(candidate_intervals)
+    # print(sd)
+
+    print(candidate_intervals)
+    print(votes.values())
+    likely_interval = int(max(votes, key=votes.get))
+    print(likely_interval)
+
+    # need to record all the lines (or at least intervals) voting for each interval, then average the interval value they vote for
+
+    return likely_interval
 
 def confident_intersection():
     """
@@ -550,6 +625,8 @@ horizontal_lines = merge_inline(filter_length(horizontal_lines, length_threshold
 # vertical_lines = filter_length(vertical_lines, length_threshold)
 # horizontal_lines = filter_length(horizontal_lines, length_threshold)
 draw_hough(vertical_lines, horizontal_lines, sobel_indiv_lines)
+interval = estimate_interval(horizontal_lines, 1) # correct for map2 is 72
+draw_grid((0,0,0,0), interval, sobel_indiv_lines)
 
 
 
