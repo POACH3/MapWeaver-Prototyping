@@ -263,6 +263,10 @@ def merge_inline(lines, epsilon):
     """
     Merge nearby parallel (ish) lines within epsilon distance.
 
+    Notes:
+        sort by average instead of min?
+        average greedily in both directions to avoid bias?
+
     Args:
         lines (list): list of lines in the format (x1, y1, x2, y2)
         epsilon (int): the distance threshold for merging lines
@@ -272,24 +276,32 @@ def merge_inline(lines, epsilon):
     """
     merged_lines = []
 
-    if abs(lines[0][0] - lines[0][2]) < abs(lines[0][1] - lines[0][3]):  # x values are closer than y values
-        sorted_lines = sorted(lines, key=lambda line: min(line[0], line[2])) # sort by smalled x-coord
+    x1, y1, x2, y2 = lines[0]
+    if abs(x2 - x1) < abs(y2 - y1):                                # x values are closer than y values
+        #sorted_lines = sorted(lines, key=lambda line: min(x1, x2)) # sort by smalled x-coord
+        sorted_lines = sorted(lines, key=lambda line: min(line[0], line[2]))  # sort by smalled x-coord
 
         l = 0
         r = 1
-        y_vals = []
-
         while r < len(sorted_lines):
             l_x1, l_y1, l_x2, l_y2 = sorted_lines[l]
-            y_vals = [l_y1, l_y2] # reset
+            r_x1, r_y1, r_x2, r_y2 = sorted_lines[r]
 
-            if abs(sorted_lines[r][0] - sorted_lines[l][0]) < epsilon:
+            if abs(r_x1 - l_x1) < epsilon:
                 r += 1
             else:
-                r_x1, r_y1, r_x2, r_y2 = sorted_lines[r]
-                y_vals.extend([r_y1, r_y2])
+                r -= 1 # go back to last r
+                y_vals = []
 
-                ave_x = sum([sorted_lines[i][0] for i in range(l, r + 1)]) / (r - l + 1)
+                #ave_x = int(sum([sorted_lines[i][0] for i in range(l, r + 1)]) / (r - l + 1))
+                #ave_x = sum([sorted_lines[i][0] for i in range(l, r + 1)]) // (r - l + 1)
+                ave_x = 0
+                for i in range(l, r+1):
+                    ave_x += sorted_lines[i][0]
+                    y_vals.append(sorted_lines[i][1])
+                    y_vals.append(sorted_lines[i][3])
+                #ave_x = ave_x // ((r - l) + 1)
+                ave_x = int(round(ave_x / ((r - l) + 1))) # avoid downward (left/up) bias
                 min_y = min(y_vals)
                 max_y = max(y_vals)
 
@@ -298,32 +310,62 @@ def merge_inline(lines, epsilon):
                 l = r+1 # move l past r to not double count the same line in the merged lines
                 r += 2
 
+        # Handle the last group of lines if any (after the loop ends)
+        if r > l:  # Check if there are remaining lines between l and r-1
+            ave_x = sum([sorted_lines[i][0] for i in range(l, r)]) // (r - l)
+            y_vals = []
+            for i in range(l, r):
+                y_vals.append(sorted_lines[i][1])
+                y_vals.append(sorted_lines[i][3])
+            min_y = min(y_vals)
+            max_y = max(y_vals)
+
+            merged_lines.append((ave_x, min_y, ave_x, max_y))
+
     else:
         # same logic by for the y values
-        sorted_lines = sorted(lines, key=lambda line: min(line[1], line[3]))
+        sorted_lines = sorted(lines, key=lambda line: min(y1, y2))
 
         l = 0
         r = 1
-        x_vals = []
-
         while r < len(sorted_lines):
             l_x1, l_y1, l_x2, l_y2 = sorted_lines[l]
-            x_vals = [l_x1, l_x2]
+            r_x1, r_y1, r_x2, r_y2 = sorted_lines[r]
 
-            if abs(sorted_lines[r][1] - sorted_lines[l][1]) < epsilon:
+            if abs(r_y1 - l_y1) < epsilon:
                 r += 1
             else:
-                r_x1, r_y1, r_x2, r_y2 = sorted_lines[r]
-                x_vals.extend([r_x1, r_x2])
+                r -= 1  # go back to last r
+                x_vals = []
 
-                ave_y = sum([sorted_lines[i][1] for i in range(l, r + 1)]) / (r - l + 1)
+                # ave_x = int(sum([sorted_lines[i][0] for i in range(l, r + 1)]) / (r - l + 1))
+                # ave_x = sum([sorted_lines[i][0] for i in range(l, r + 1)]) // (r - l + 1)
+                ave_y = 0
+                for i in range(l, r + 1):
+                    ave_y += sorted_lines[i][1]
+                    x_vals.append(sorted_lines[i][0])
+                    x_vals.append(sorted_lines[i][2])
+                #ave_y = ave_y // ((r - l) + 1)
+                ave_y = int(round(ave_y / ((r - l) + 1)))
                 min_x = min(x_vals)
                 max_x = max(x_vals)
 
                 merged_lines.append((min_x, ave_y, max_x, ave_y))
 
-                l = r+1 # move l past r to not double count the same line in the merged lines
+                l = r + 1  # move l past r to not double count the same line in the merged lines
                 r += 2
+
+        # Handle the last group of lines if any (after the loop ends)
+        if r > l:  # Check if there are remaining lines between l and r-1
+            ave_y = sum([sorted_lines[i][1] for i in range(l, r)]) // (r - l)
+            x_vals = []
+            for i in range(l, r):
+                x_vals.append(sorted_lines[i][0])
+                x_vals.append(sorted_lines[i][2])
+            min_x = min(x_vals)
+            max_x = max(x_vals)
+
+            merged_lines.append((min_x, ave_y, max_x, ave_y))
 
     return merged_lines
 
@@ -396,7 +438,7 @@ def draw_grid(intersection, interval, image):
 
 
 # load image (grayscale)
-image = cv2.imread('map1.jpg', cv2.IMREAD_GRAYSCALE)
+image = cv2.imread('map2.jpg', cv2.IMREAD_GRAYSCALE)
 
 # gaussian blur
 image = cv2.GaussianBlur(image, (5, 5), 1)
@@ -503,8 +545,10 @@ draw_hough(vertical_lines, horizontal_lines, edges_and_lines)
 sobel_indiv_lines = image_color.copy()
 _, horizontal_lines = filter_horiz_vert(lines_sobel_y)
 vertical_lines, _ = filter_horiz_vert(lines_sobel_x)
-vertical_lines = filter_length(vertical_lines, length_threshold)
-horizontal_lines = filter_length(horizontal_lines, length_threshold)
+vertical_lines = merge_inline(filter_length(vertical_lines, length_threshold), 10)
+horizontal_lines = merge_inline(filter_length(horizontal_lines, length_threshold), 10)
+# vertical_lines = filter_length(vertical_lines, length_threshold)
+# horizontal_lines = filter_length(horizontal_lines, length_threshold)
 draw_hough(vertical_lines, horizontal_lines, sobel_indiv_lines)
 
 
@@ -548,18 +592,18 @@ cv2.imwrite('lines_edges_and.jpg', edges_and_lines)
 
 
 
-x_averages, y_averages = average_clusters(vertical_lines, horizontal_lines)
-
-dbscan_image = sobel_indiv_lines.copy()
-height, width = dbscan_image.shape[:2]
-
-for i in range(len(x_averages)):
-    cv2.line(dbscan_image, (int(x_averages[i]), 0), (int(x_averages[i]), height), (255, 255, 0), 2)
-
-for i in range(len(y_averages)):
-    cv2.line(dbscan_image, (0, int(y_averages[i])), (width, int(y_averages[i])), (255, 255, 0), 2)
-
-cv2.imwrite('dbscan_sobel.jpg', dbscan_image)
+# x_averages, y_averages = average_clusters(vertical_lines, horizontal_lines)
+#
+# dbscan_image = sobel_indiv_lines.copy()
+# height, width = dbscan_image.shape[:2]
+#
+# for i in range(len(x_averages)):
+#     cv2.line(dbscan_image, (int(x_averages[i]), 0), (int(x_averages[i]), height), (255, 255, 0), 2)
+#
+# for i in range(len(y_averages)):
+#     cv2.line(dbscan_image, (0, int(y_averages[i])), (width, int(y_averages[i])), (255, 255, 0), 2)
+#
+# cv2.imwrite('dbscan_sobel.jpg', dbscan_image)
 
 
 
