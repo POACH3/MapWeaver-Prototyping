@@ -58,14 +58,15 @@ def filter_horiz_vert(lines):
     vertical_lines = []
     horizontal_lines = []
     for line in lines:
+        # print(line)
         x1, y1, x2, y2 = line[0]
         angle = line_angle(line)
 
-        # Vertical lines (within 5 degrees of 90° or 270°)
+        # vertical lines (within 2 degrees of 90° or 270°)
         if (abs(angle - 90) < 2 or abs(angle - 270) < 2):
             vertical_lines.append((x1, y1, x2, y2))
 
-        # Horizontal lines (within 5 degrees of 0° or 180°)
+        # horizontal lines (within 2 degrees of 0° or 180°)
         elif (abs(angle) < 2 or abs(angle - 180) < 2):
             horizontal_lines.append((x1, y1, x2, y2))
 
@@ -81,27 +82,19 @@ def draw_hough(vertical_lines, horizontal_lines, image):
         horizontal_lines (list): A list of horizontal line endpoints represented as [x1, y1, x2, y2].
         image (numpy.ndarray): The image to draw on.
     """
-
-    if vertical_lines or horizontal_lines is not None:
+    if vertical_lines is not None:
         for line in vertical_lines:
-        #for line in filtered_vertical_lines:
             #cv2.line(image_color, (line[0], 0), (line[0], image.shape[0]), (0, 255, 0), 2)  # Vertical lines in green
-
             x1, y1, x2, y2 = line
             cv2.line(image, (x1, y1), (x2, y2), (0, 0, 255), 2)
 
+    if horizontal_lines is not None:
         for line in horizontal_lines:
-        #for line in filtered_horizontal_lines:
             #cv2.line(image_color, (0, line[0]), (image.shape[1], line[0]), (0, 255, 0), 2)  # Horizontal lines in green
             x1, y1, x2, y2 = line
             cv2.line(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            """
-        # draw detected lines
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-            cv2.line(image_color, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Green lines for visibility
-            """
-    else:
+
+    if vertical_lines is None and horizontal_lines is None:
         print("No lines detected")
 
 
@@ -276,7 +269,8 @@ def merge_inline(lines, epsilon):
         merged_lines (list): list of merged lines
     """
     merged_lines = []
-
+    print('number of lines: ' + str(len(lines)))
+    print(len(lines))
     x1, y1, x2, y2 = lines[0]
     if abs(x2 - x1) < abs(y2 - y1):                                # x values are closer than y values
         #sorted_lines = sorted(lines, key=lambda line: min(x1, x2)) # sort by smalled x-coord
@@ -382,12 +376,6 @@ def estimate_interval(lines, epsilon):
     Returns:
         likely_interval (int): the voted interval
     """
-    # votes = {}
-    # for i in range(len(lines)):
-    #     for j in range(i + 1, len(lines)):
-            # go through the dictionary to see if there is an interval that works (within epsilon)
-
-            # record all intervals, then average all the ones within epsilon of each other
     adj_intervals = []
     votes = {}
 
@@ -422,6 +410,7 @@ def estimate_interval(lines, epsilon):
         avg_interval = sum(group) / len(group)
         votes[avg_interval] = len(group)
 
+
     candidate_intervals = list(votes.keys())
 
     # go through all other (non-adjacent) intervals and check for multiples of highest voted interval
@@ -429,6 +418,11 @@ def estimate_interval(lines, epsilon):
         for j in range(i + 2, len(lines)):  # j starts from i+2 to avoid adjacent intervals
             nonadj_interval = int(abs(lines[j][line_orientation] - lines[i][line_orientation]))
 
+            # # this allows each interval to vote ones– the closest candidate interval
+            # closest_candidate = min(candidate_intervals, key=lambda x: abs(nonadj_interval - x))
+            # votes[closest_candidate] += 1
+
+            # this allows one interval to vote multiple times
             for k in range(len(candidate_intervals)):
                 # if nonadj_interval % candidate_intervals[k] < epsilon: # doesn't allow for more error for higher multiple
                 #     votes[candidate_intervals[k]] += 1
@@ -438,20 +432,46 @@ def estimate_interval(lines, epsilon):
 
                 # check if the interval is a multiple of the candidate interval (with relative tolerance)
                 if abs(nonadj_interval % candidate_interval) < relative_epsilon:
-                    votes[candidate_interval] += 1 # this allows one interval to vote multiple times
+                    votes[candidate_interval] += 1
+
+
+    for i in range(len(lines) - 2):
+        for j in range((i + 2), len(lines)):
+
+
+
 
     # check the standard deviation of each interval group– should be low, indicating high consensus for whatever candidate they vote for
     # sd = np.std(candidate_intervals)
     # print(sd)
 
-    print(candidate_intervals)
-    print(votes.values())
+    #variation / mean_spacing # to convert variability to relative scale
+
+    # Calculate standard deviation for voting confidence
+    vote_values = list(votes.values())
+    sd = np.std(vote_values)
+
+    # Calculate mean interval spacing to normalize variability
+    mean_spacing = np.mean(adj_intervals)
+    variation = sd / mean_spacing
+
+    # Confidence measure: Inversely proportional to the standard deviation
+    confidence = 1 / (1 + sd)  # This can be adjusted as needed
+
+    # If multiple intervals have close votes, add a fallback to break ties
+    if len(set(vote_values)) == 1:
+        confidence *= 0.5  # Lower confidence if votes are very close
+
     likely_interval = int(max(votes, key=votes.get))
-    print(likely_interval)
+
+    print(f"Likely Interval: {likely_interval}")
+    print(f"Votes: {votes}")
+    print(f"SD: {sd}, Variation: {variation}")
+    print(f"Confidence: {confidence}")
 
     # need to record all the lines (or at least intervals) voting for each interval, then average the interval value they vote for
 
-    return likely_interval
+    return likely_interval # return confidence?
 
 def estimate_intersection(vertical_lines, horizontal_lines, interval, shape):
     """
@@ -468,7 +488,6 @@ def estimate_intersection(vertical_lines, horizontal_lines, interval, shape):
         intersection (tuple): coordinate represented in the format (x, y)
     """
     height, width, _ = shape
-    print(shape)
 
     # extend lines
     extended_vertical = []
@@ -518,7 +537,7 @@ def estimate_intersection(vertical_lines, horizontal_lines, interval, shape):
         scores_intersection[intersection] = score_combined
         # scores_x[x] = score_x
         # scores_y[y] = score_y
-
+    print('scores intersection: ' + str(len(scores_intersection)))
     intersection = min(scores_intersection, key=scores_intersection.get)
     return intersection
 
@@ -529,6 +548,166 @@ def match_grid():
 
     """
     pass
+
+def edges(image):
+    image = image.copy()
+
+    # gaussian blur
+    image = cv2.GaussianBlur(image, (5, 5), 1)
+    # canny seems to do better without gaussian blur, sobel better with
+
+
+    # CANNY EDGE DETECT
+    edges_canny = cv2.Canny(image, 50, 250)
+
+
+    # SOBEL EDGE DETECT
+    sobel_x = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=3)  # vertical edges (x-direction gradient)
+    sobel_y = cv2.Sobel(image, cv2.CV_64F, 0, 1, ksize=3)  # horizontal edges (y-direction gradient)
+
+    # convert gradients to absolute values and normalize
+    sobel_x = cv2.convertScaleAbs(sobel_x)
+    sobel_y = cv2.convertScaleAbs(sobel_y)
+
+    # combine sobel x and y edges
+    sobel_combined = cv2.bitwise_or(sobel_x, sobel_y)
+
+    # threshold the edges to get a binary edge map
+    _, sobel_edges_thresholded = cv2.threshold(sobel_combined, 50, 255, cv2.THRESH_BINARY)
+    _, edges_sobel_x = cv2.threshold(sobel_x, 50, 255, cv2.THRESH_BINARY)
+    _, edges_sobel_y = cv2.threshold(sobel_y, 50, 255, cv2.THRESH_BINARY)
+
+    # save edge images
+    # cv2.imwrite('edges_canny.jpg', edges_canny)
+    # #cv2.imwrite('edges_sobel.jpg', sobel_edges_thresholded)
+    # cv2.imwrite('edges_sobel_x.jpg', edges_sobel_x)
+    # cv2.imwrite('edges_sobel_y.jpg', edges_sobel_y)
+
+    # morpho ops
+    # kernel = np.ones((2, 2), np.uint8)
+    # morpho_sobel_x = cv2.dilate(sobel_x, kernel, iterations=1)
+    # # morpho_sobel_x = cv2.erode(morpho_sobel_x, kernel, iterations=1)
+    # _, x_edges_thresholded = cv2.threshold(morpho_sobel_x, 50, 255, cv2.THRESH_BINARY)
+    # # morphoblur_sobel_x = cv2.GaussianBlur(x_edges_thresholded, (5, 5), 1)
+    #
+    # edges_or = cv2.bitwise_or(sobel_combined, edges_canny)
+    # _, edges_or_thresholded = cv2.threshold(edges_or, 50, 255, cv2.THRESH_BINARY)
+    # dilated_or = cv2.dilate(edges_or_thresholded, kernel, iterations=1)
+    # eroded_or = cv2.erode(dilated_or, kernel, iterations=2)
+    #
+    # edges_and = cv2.bitwise_and(sobel_combined, edges_canny)
+    # _, edges_and_thresholded = cv2.threshold(edges_and, 50, 255, cv2.THRESH_BINARY)
+
+    # cv2.imwrite('edges_or.jpg', eroded_or)
+    # cv2.imwrite('edges_and.jpg', edges_and_thresholded)
+
+    return edges_canny, edges_sobel_x, edges_sobel_y
+
+def detect_grid(image):
+    """
+    Estimate intervals and intersection.
+
+    """
+    edge_type = 'sobel'
+    #edge_type = 'canny'
+
+    # length_threshold = 100
+    print(image.shape)
+    length_threshold = max(image.shape) * .05
+    print(length_threshold)
+
+    image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    edges_canny, edges_sobel_x, edges_sobel_y = edges(image_gray)
+
+    # hough fit
+    canny_lines = cv2.HoughLinesP(edges_canny, 1, np.pi / 180, threshold=10, minLineLength=50, maxLineGap=5)
+    #sobel_lines = cv2.HoughLinesP(edges_sobel, 1, np.pi / 180, threshold=100, minLineLength=50, maxLineGap=5)
+    sobel_x_lines = cv2.HoughLinesP(edges_sobel_x, 1, np.pi / 180, threshold=10, minLineLength=50, maxLineGap=5)
+    sobel_y_lines = cv2.HoughLinesP(edges_sobel_y, 1, np.pi / 180, threshold=10, minLineLength=50, maxLineGap=5)
+    # edges_or_lines = cv2.HoughLinesP(eroded_or, 1, np.pi / 180, threshold=100, minLineLength=50, maxLineGap=5)
+    # edges_and_lines = cv2.HoughLinesP(edges_and_thresholded, 1, np.pi / 180, threshold=100, minLineLength=50, maxLineGap=5)
+
+    # convert to color for matplotlib and line draw
+    color_edges_canny = cv2.cvtColor(edges_canny, cv2.COLOR_GRAY2BGR)
+    color_edges_sobel_x = cv2.cvtColor(edges_sobel_x, cv2.COLOR_GRAY2BGR)
+    color_edges_sobel_y = cv2.cvtColor(edges_sobel_y, cv2.COLOR_GRAY2BGR)
+
+
+    lines_sobel_x = color_edges_sobel_x.copy()
+    vertical_lines, _ = filter_horiz_vert(sobel_x_lines)
+    # print('num vert: ' + str(len(vertical_lines)))
+    # print('num hor: ' + str(len(horizontal_lines)))
+    vertical_lines = merge_inline(vertical_lines, 10)
+    #horizontal_lines = merge_inline(horizontal_lines, 10)
+    vertical_lines = filter_length(vertical_lines, length_threshold)
+    #horizontal_lines = filter_length(horizontal_lines, length_threshold)
+    #draw_hough(vertical_lines, horizontal_lines, lines_sobel_x)
+
+    lines_sobel_y = color_edges_sobel_y.copy()
+    _, horizontal_lines = filter_horiz_vert(sobel_y_lines)
+    #vertical_lines = merge_inline(vertical_lines, 10)
+    horizontal_lines = merge_inline(horizontal_lines, 10)
+    #vertical_lines = filter_length(vertical_lines, length_threshold)
+    horizontal_lines = filter_length(horizontal_lines, length_threshold)
+    #draw_hough(vertical_lines, horizontal_lines, lines_sobel_y)
+
+    # lines_sobel = image_color.copy() # pre-hough sobel combine (anded)
+    # vertical_lines, horizontal_lines = filter_horiz_vert(lines_sobel)
+    # vertical_lines = filter_length(vertical_lines, length_threshold)
+    # horizontal_lines = filter_length(horizontal_lines, length_threshold)
+    # draw_hough(vertical_lines, horizontal_lines, sobel_lines)
+
+    lines_sobel_xy = cv2.cvtColor(cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR) # post-hough sobel combine
+    _, horizontal_lines = filter_horiz_vert(sobel_y_lines)
+    vertical_lines, _ = filter_horiz_vert(sobel_x_lines)
+    vertical_lines = merge_inline(vertical_lines, 10)
+    horizontal_lines = merge_inline(horizontal_lines, 10)
+    # vertical_lines = filter_length(vertical_lines, length_threshold)
+    # horizontal_lines = filter_length(horizontal_lines, length_threshold)
+    draw_hough(vertical_lines, horizontal_lines, lines_sobel_xy)
+    if edge_type == 'sobel':
+        interval = estimate_interval(horizontal_lines, 1)  # correct for map2 is 72
+        intersection = estimate_intersection(vertical_lines, horizontal_lines, interval, lines_sobel_xy.shape)
+    # draw_grid((198, 286), 72, sobel_indiv_lines) # 214, 1656, 1728
+    #draw_grid(intersection, interval, lines_sobel_xy)
+
+    # edges_or_lines = image_color.copy()
+    # vertical_lines, horizontal_lines = filter_horiz_vert(lines_edges_or)
+    # vertical_lines = filter_length(vertical_lines, length_threshold)
+    # horizontal_lines = filter_length(horizontal_lines, length_threshold)
+    # draw_hough(vertical_lines, horizontal_lines, edges_or_lines)
+    #
+    # edges_and_lines = image_color.copy()
+    # vertical_lines, horizontal_lines = filter_horiz_vert(lines_edges_and)
+    # vertical_lines = filter_length(vertical_lines, length_threshold)
+    # horizontal_lines = filter_length(horizontal_lines, length_threshold)
+    # draw_hough(vertical_lines, horizontal_lines, edges_and_lines)
+
+
+    lines_canny = color_edges_canny.copy() # copy?
+    vertical_lines, horizontal_lines = filter_horiz_vert(canny_lines)
+    vertical_lines = merge_inline(vertical_lines, 10)
+    horizontal_lines = merge_inline(horizontal_lines, 10)
+    vertical_lines = filter_length(vertical_lines, length_threshold)
+    horizontal_lines = filter_length(horizontal_lines, length_threshold)
+    draw_hough(vertical_lines, horizontal_lines, lines_canny)
+    if edge_type == 'canny':
+        interval = estimate_interval(horizontal_lines, 1)  # correct for map2 is 72
+        # need to estimate for vertical
+        intersection = estimate_intersection(vertical_lines, horizontal_lines, interval, lines_canny.shape)
+    #draw_grid(intersection, interval, canny_grid_lines)
+
+    # save line image
+    cv2.imwrite('lines_canny.jpg', lines_canny)
+    # cv2.imwrite('lines_sobel.jpg', sobel_lines)
+    cv2.imwrite('lines_sobel_x.jpg', lines_sobel_x)
+    cv2.imwrite('lines_sobel_y.jpg', lines_sobel_y)
+    cv2.imwrite('lines_sobel.jpg', lines_sobel_xy)
+    # cv2.imwrite('lines_edges_or.jpg', edges_or_lines)
+    # cv2.imwrite('lines_edges_and.jpg', edges_and_lines)
+
+    return intersection, interval
 
 def draw_grid(intersection, interval, image):
     """
@@ -548,154 +727,45 @@ def draw_grid(intersection, interval, image):
     num_horiz_top = (y // interval) + 1
     num_horiz_bottom = ((height - y) // interval) + 1
 
-    # cv2.line(image, (x, 0), (x, height), (0, 0, 255), 2)
-    # cv2.line(image, (0, y), (width, y), (0, 0, 255), 2)
-
     # iterate through and draw
     for i in range(num_vert_left):
-        cv2.line(image, (x, 0), (x, height), (0, 255, 0), 4)
+        cv2.line(image, (x, 0), (x, height), (255, 255, 0), 1)
         x -= interval
 
     x = intersection[0] + interval
     for i in range(num_vert_right):
-        cv2.line(image, (x, 0), (x, height), (0, 0, 255), 2)
+        cv2.line(image, (x, 0), (x, height), (255, 255, 0), 1)
         x += interval
 
     for i in range(num_horiz_top):
-        cv2.line(image, (0, y), (width, y), (0, 255, 0), 4)
+        cv2.line(image, (0, y), (width, y), (255, 255, 0), 1)
         y -= interval
 
     y = intersection[1] + interval
     for i in range(num_horiz_bottom):
-        cv2.line(image, (0, y), (width, y), (0, 0, 255), 2)
+        cv2.line(image, (0, y), (width, y), (255, 255, 0), 1)
         y += interval
 
+    x, y = intersection[0], intersection[1]
+    cv2.line(image, (x, 0), (x, height), (0, 255, 255), 2)
+    cv2.line(image, (0, y), (width, y), (0, 255, 255), 2)
 
 
 
-# load image (grayscale)
-image = cv2.imread('map2.jpg', cv2.IMREAD_GRAYSCALE)
-
-# gaussian blur
-image = cv2.GaussianBlur(image, (5, 5), 1)
-# canny seems to do better without gaussian blur, sobel better with
 
 
-# CANNY EDGE DETECT
-edges_canny = cv2.Canny(image, 50, 250)
-cv2.imwrite('edges_canny.jpg', edges_canny)
+# load image
+image = cv2.imread('map2.jpg')
+
+intersection, interval = detect_grid(image.copy())
+detected_grid = cv2.cvtColor(cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR)
+draw_grid(intersection, interval, detected_grid)
+cv2.imwrite('detected_grid.jpg', detected_grid)
 
 
-
-# SOBEL EDGE DETECT
-sobel_x = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=3) # vertical edges (x-direction gradient)
-sobel_y = cv2.Sobel(image, cv2.CV_64F, 0, 1, ksize=3) # horizontal edges (y-direction gradient)
-
-# convert gradients to absolute values and normalize
-sobel_x = cv2.convertScaleAbs(sobel_x)
-sobel_y = cv2.convertScaleAbs(sobel_y)
-
-# combine sobel x and y edges
-sobel_combined = cv2.bitwise_or(sobel_x, sobel_y)
-
-# threshold the edges to get a binary edge map
-_, sobel_edges_thresholded = cv2.threshold(sobel_combined, 50, 255, cv2.THRESH_BINARY)
-_, x_edges_thresholded = cv2.threshold(sobel_x, 50, 255, cv2.THRESH_BINARY)
-_, y_edges_thresholded = cv2.threshold(sobel_y, 50, 255, cv2.THRESH_BINARY)
-
-# morpho ops
-kernel = np.ones((2, 2), np.uint8)
-morpho_sobel_x = cv2.dilate(sobel_x, kernel, iterations=1)
-#morpho_sobel_x = cv2.erode(morpho_sobel_x, kernel, iterations=1)
-_, x_edges_thresholded = cv2.threshold(morpho_sobel_x, 50, 255, cv2.THRESH_BINARY)
-#morphoblur_sobel_x = cv2.GaussianBlur(x_edges_thresholded, (5, 5), 1)
-
-
-# save edge image
-cv2.imwrite('edges_sobel.jpg', sobel_edges_thresholded)
-cv2.imwrite('edges_sobel_x.jpg', x_edges_thresholded)
-cv2.imwrite('edges_sobel_y.jpg', y_edges_thresholded)
-
-edges_or = cv2.bitwise_or(sobel_combined, edges_canny)
-_, edges_or_thresholded = cv2.threshold(edges_or, 50, 255, cv2.THRESH_BINARY)
-dilated_or = cv2.dilate(edges_or_thresholded, kernel, iterations=1)
-eroded_or = cv2.erode(dilated_or, kernel, iterations=2)
-
-edges_and = cv2.bitwise_and(sobel_combined, edges_canny)
-_, edges_and_thresholded = cv2.threshold(edges_and, 50, 255, cv2.THRESH_BINARY)
-
-cv2.imwrite('edges_or.jpg', eroded_or)
-cv2.imwrite('edges_and.jpg', edges_and_thresholded)
-
-
-# hough fit
-lines_canny = cv2.HoughLinesP(edges_canny, 1, np.pi / 180, threshold=10, minLineLength=50, maxLineGap=5)
-lines_sobel = cv2.HoughLinesP(sobel_edges_thresholded, 1, np.pi / 180, threshold=100, minLineLength=50, maxLineGap=5)
-lines_sobel_x = cv2.HoughLinesP(x_edges_thresholded, 1, np.pi / 180, threshold=10, minLineLength=50, maxLineGap=5)
-lines_sobel_y = cv2.HoughLinesP(y_edges_thresholded, 1, np.pi / 180, threshold=100, minLineLength=50, maxLineGap=5)
-lines_edges_or = cv2.HoughLinesP(eroded_or, 1, np.pi / 180, threshold=100, minLineLength=50, maxLineGap=5)
-lines_edges_and = cv2.HoughLinesP(edges_and_thresholded, 1, np.pi / 180, threshold=100, minLineLength=50, maxLineGap=5)
-
-
-# convert to color to draw lines for matplotlib
-image_color = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-
-length_threshold = 100
-
-canny_lines = image_color.copy()
-vertical_lines, horizontal_lines = filter_horiz_vert(lines_canny)
-vertical_lines = filter_length(vertical_lines, length_threshold)
-horizontal_lines = filter_length(horizontal_lines, length_threshold)
-draw_hough(vertical_lines, horizontal_lines, canny_lines)
-
-sobel_lines = image_color.copy()
-vertical_lines, horizontal_lines = filter_horiz_vert(lines_sobel)
-vertical_lines = filter_length(vertical_lines, length_threshold)
-horizontal_lines = filter_length(horizontal_lines, length_threshold)
-draw_hough(vertical_lines, horizontal_lines, sobel_lines)
-
-sobel_x_lines = image_color.copy()
-vertical_lines, horizontal_lines = filter_horiz_vert(lines_sobel_x)
-vertical_lines = filter_length(vertical_lines, length_threshold)
-horizontal_lines = filter_length(horizontal_lines, length_threshold)
-draw_hough(vertical_lines, horizontal_lines, sobel_x_lines)
-
-sobel_y_lines = image_color.copy()
-vertical_lines, horizontal_lines = filter_horiz_vert(lines_sobel_y)
-vertical_lines = filter_length(vertical_lines, length_threshold)
-horizontal_lines = filter_length(horizontal_lines, length_threshold)
-draw_hough(vertical_lines, horizontal_lines, sobel_y_lines)
-
-edges_or_lines = image_color.copy()
-vertical_lines, horizontal_lines = filter_horiz_vert(lines_edges_or)
-vertical_lines = filter_length(vertical_lines, length_threshold)
-horizontal_lines = filter_length(horizontal_lines, length_threshold)
-draw_hough(vertical_lines, horizontal_lines, edges_or_lines)
-
-edges_and_lines = image_color.copy()
-vertical_lines, horizontal_lines = filter_horiz_vert(lines_edges_and)
-vertical_lines = filter_length(vertical_lines, length_threshold)
-horizontal_lines = filter_length(horizontal_lines, length_threshold)
-draw_hough(vertical_lines, horizontal_lines, edges_and_lines)
-
-sobel_indiv_lines = image_color.copy()
-_, horizontal_lines = filter_horiz_vert(lines_sobel_y)
-vertical_lines, _ = filter_horiz_vert(lines_sobel_x)
-vertical_lines = merge_inline(filter_length(vertical_lines, length_threshold), 10)
-horizontal_lines = merge_inline(filter_length(horizontal_lines, length_threshold), 10)
-# vertical_lines = filter_length(vertical_lines, length_threshold)
-# horizontal_lines = filter_length(horizontal_lines, length_threshold)
-draw_hough(vertical_lines, horizontal_lines, sobel_indiv_lines)
-interval = estimate_interval(horizontal_lines, 1) # correct for map2 is 72
-intersection = estimate_intersection(vertical_lines, horizontal_lines, interval, sobel_indiv_lines.shape)
-#draw_grid((198, 286), 72, sobel_indiv_lines) # 214, 1656, 1728
-draw_grid(intersection, interval, sobel_indiv_lines)
-
-
-
-color_canny = cv2.cvtColor(edges_canny.copy(), cv2.COLOR_GRAY2BGR)
-draw_grid((800,700), 100, color_canny)
-cv2.imwrite('grid_test.jpg', color_canny)
+# color_canny = cv2.cvtColor(edges_canny.copy(), cv2.COLOR_GRAY2BGR)
+# draw_grid((800,700), 100, color_canny)
+# cv2.imwrite('grid_test.jpg', color_canny)
 
 
 
@@ -719,15 +789,6 @@ cv2.imwrite('grid_test.jpg', color_canny)
 # plt.imshow(cv2.cvtColor(sobel_y_lines, cv2.COLOR_BGR2RGB))
 # plt.axis('off')
 # plt.show()
-
-# save line fit image
-cv2.imwrite('lines_canny.jpg', canny_lines)
-cv2.imwrite('lines_sobel.jpg', sobel_lines)
-cv2.imwrite('lines_sobel_x.jpg', sobel_x_lines)
-cv2.imwrite('lines_sobel_y.jpg', sobel_y_lines)
-cv2.imwrite('sobel_indiv_lines.jpg', sobel_indiv_lines)
-cv2.imwrite('lines_edges_or.jpg', edges_or_lines)
-cv2.imwrite('lines_edges_and.jpg', edges_and_lines)
 
 
 
