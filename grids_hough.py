@@ -453,13 +453,74 @@ def estimate_interval(lines, epsilon):
 
     return likely_interval
 
-def confident_intersection():
+def estimate_intersection(vertical_lines, horizontal_lines, interval, shape):
     """
     select vertical and horizontal line with high confidence (long, has lots of interval multiples, _____)
     in order to return the most confident intersection
 
+    Args:
+        vertical_lines (list): list of lines in the format (x1, y1, x2, y2)
+        horizontal_lines (list): list of lines in the format (x1, y1, x2, y2)
+        shape (tuple): pixel dimensions of the image
+        interval (int): the grid spacing interval
+
+    Returns:
+        intersection (tuple): coordinate represented in the format (x, y)
     """
-    pass
+    height, width, _ = shape
+    print(shape)
+
+    # extend lines
+    extended_vertical = []
+    extended_horizontal = []
+
+    for line in vertical_lines:
+        x1, _, x2, _ = line
+        extended_vertical.append((x1, 0, x2, height))
+
+    for line in horizontal_lines:
+        _, y1, _, y2 = line
+        extended_horizontal.append((0, y1, width, y2))
+
+    # get intersections
+    intersections = []
+    for vert_line in extended_vertical:
+        v_x1, _, _, _ = vert_line
+
+        for horiz_line in extended_horizontal:
+            _, h_y1, _, _ = horiz_line
+            coord = (v_x1, h_y1)
+            intersections.append(coord)
+
+    # score intersections based on error between every line and interval multiple
+    scores_intersection = {}
+    # scores_x = {}
+    # scores_y = {}
+    for intersection in intersections:
+        x, y = intersection
+        score_x = 0
+        score_y = 0
+
+        for line in extended_vertical:
+            x1, _, _, _ = line
+            #error_x = abs(x - x1) % interval
+            error_x = abs(x - round(x1 / interval) * interval)
+            score_x += error_x
+
+        for line in extended_horizontal:
+            _, y1, _, _ = line
+            #error_y = abs(y - y1) % interval
+            error_y = abs(y - round(y1 / interval) * interval)
+            score_y += error_y
+
+        #score_combined = (score_x / len(vertical_lines)) + (score_y / len(horizontal_lines)) # weight equally or skew to greater number of lines?
+        score_combined = score_x + score_y
+        scores_intersection[intersection] = score_combined
+        # scores_x[x] = score_x
+        # scores_y[y] = score_y
+
+    intersection = min(scores_intersection, key=scores_intersection.get)
+    return intersection
 
 def match_grid():
     """
@@ -626,7 +687,9 @@ horizontal_lines = merge_inline(filter_length(horizontal_lines, length_threshold
 # horizontal_lines = filter_length(horizontal_lines, length_threshold)
 draw_hough(vertical_lines, horizontal_lines, sobel_indiv_lines)
 interval = estimate_interval(horizontal_lines, 1) # correct for map2 is 72
-draw_grid((0,0,0,0), interval, sobel_indiv_lines)
+intersection = estimate_intersection(vertical_lines, horizontal_lines, interval, sobel_indiv_lines.shape)
+#draw_grid((198, 286), 72, sobel_indiv_lines) # 214, 1656, 1728
+draw_grid(intersection, interval, sobel_indiv_lines)
 
 
 
