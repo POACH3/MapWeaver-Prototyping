@@ -23,15 +23,14 @@ Ultimately, the characteristics assigned to each virtual terrain type will drive
 
 ### Current 
 - Grid detection by clustering Hough lines (Hough transform and DBSCAN)
+- Synthetic data generation (a labeled grid dataset)
 
 ### Planned
 - Grid detection with convolutional neural network
 - Terrain detection (semantic segmentation, convolutional neural network)
-- Synthetic data generation
-
 
 ### Known Limitations
--   
+- Grid detection with Hough lines is very brittle
 
 <br>
 <br>
