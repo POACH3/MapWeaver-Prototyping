@@ -39,13 +39,13 @@ def line_angle(line):
     Returns:
         (float): The angle in degrees.
     """
-    x1, y1, x2, y2 = line[0]
+    x1, y1, x2, y2 = line
     return np.degrees(np.arctan2(y2 - y1, x2 - x1))
 
 
-def filter_horiz_vert(lines):
+def filter_vert_horiz(lines):
     """
-    Filters lines, keeping only horizontal and vertical lines.
+    Filters and sorts lines, keeping only horizontal and vertical lines.
 
     Args:
         lines (list): A list of line endpoints represented as [x1, y1, x2, y2].
@@ -54,26 +54,28 @@ def filter_horiz_vert(lines):
         vertical_lines (list): A list of vertical line endpoints represented as [x1, y1, x2, y2].
         horizontal_lines (list): A list of horizontal line endpoints represented as [x1, yx, x2, y2].
     """
-    # Separate lines into vertical and horizontal based on their angle
     vertical_lines = []
     horizontal_lines = []
-    for line in lines:
-        # print(line)
-        x1, y1, x2, y2 = line[0]
-        angle = line_angle(line)
 
-        # vertical lines (within 2 degrees of 90° or 270°)
-        if (abs(angle - 90) < 2 or abs(angle - 270) < 2):
-            vertical_lines.append((x1, y1, x2, y2))
+    if lines is not None:
+        for line in lines:
+            #x1, y1, x2, y2 = line[0] # for 3d array
+            x1, y1, x2, y2 = line # for 2d array
+            #angle = line_angle(line[0])
+            angle = line_angle(line)
 
-        # horizontal lines (within 2 degrees of 0° or 180°)
-        elif (abs(angle) < 2 or abs(angle - 180) < 2):
-            horizontal_lines.append((x1, y1, x2, y2))
+            # vertical lines (within 2 degrees of 90° or 270°)
+            if (abs(angle - 90) < 2 or abs(angle - 270) < 2):
+                vertical_lines.append((x1, y1, x2, y2))
+
+            # horizontal lines (within 2 degrees of 0° or 180°)
+            elif (abs(angle) < 2 or abs(angle - 180) < 2):
+                horizontal_lines.append((x1, y1, x2, y2))
 
     return vertical_lines, horizontal_lines
 
 
-def draw_hough(vertical_lines, horizontal_lines, image):
+def draw_hough(lines, image):
     """
     Draws lines on an image.
 
@@ -82,6 +84,8 @@ def draw_hough(vertical_lines, horizontal_lines, image):
         horizontal_lines (list): A list of horizontal line endpoints represented as [x1, y1, x2, y2].
         image (numpy.ndarray): The image to draw on.
     """
+    vertical_lines, horizontal_lines = filter_vert_horiz(lines)
+
     if vertical_lines is not None:
         for line in vertical_lines:
             #cv2.line(image_color, (line[0], 0), (line[0], image.shape[0]), (0, 255, 0), 2)  # Vertical lines in green
@@ -176,7 +180,7 @@ def filter_length(lines, threshold):
 
     return filtered_lines
 
-def average_clusters(vertical_lines, horizontal_lines):
+def average_clusters(lines, epsilon):
     """
     Uses DBSCAN to find Hough line clusters, then
     creates a line which is the average of each cluster.
@@ -189,67 +193,96 @@ def average_clusters(vertical_lines, horizontal_lines):
         x_averages (list): list of the average vertical lines
         y_averages (list): list of the average horizontal lines
     """
-    # get points for each hough line
-    # vertical_lines, horizontal_lines = filter_horiz_vert(lines_sobel) # repeat just to get the separate lines lists
-
-    x_points = []
-    y_points = []
-
-    for line in vertical_lines:
-        x1, y1, x2, y2 = line[0]
-        x_points.append(x1)
-        x_points.append(x2)
-
-    for line in horizontal_lines:
-        x1, y1, x2, y2 = line[0]
-        y_points.append(y1)
-        y_points.append(y2)
-
-    x_points_2d = np.array(x_points).reshape(-1, 1)
-    y_points_2d = np.array(y_points).reshape(-1, 1)
-
-    # pass to DBSCAN
-    dbscan = DBSCAN(eps=10, min_samples=2)
-    x_labels = dbscan.fit_predict(x_points_2d)
-    y_labels = dbscan.fit_predict(y_points_2d)
-
-    print("x_labels: ", x_labels)
-    print("y_labels: ", y_labels)
-
-    # take average of clusters
-    x_clusters = {}
-    num_x_clusters = {}
-    for i in range(len(x_labels)):
-        if x_labels[i] != -1:
-            if x_labels[i] not in x_clusters:
-                x_clusters[x_labels[i]] = 0
-            if x_labels[i] not in num_x_clusters:
-                num_x_clusters[x_labels[i]] = 0
-
-                x_clusters[x_labels[i]] += x_points[i]
-                num_x_clusters[x_labels[i]] += 1
-
+    vertical_lines, horizontal_lines = filter_vert_horiz(lines) # repeat just to get the separate lines lists
     x_averages = []
-    for i in range(len(x_clusters)):
-        x_averages.append(x_clusters[i] / num_x_clusters[i])
-
-    y_clusters = {}
-    num_y_clusters = {}
-    for i in range(len(y_labels)):
-        if y_labels[i] != -1:
-            if y_labels[i] not in y_clusters:
-                y_clusters[y_labels[i]] = 0
-            if y_labels[i] not in num_y_clusters:
-                num_y_clusters[y_labels[i]] = 0
-
-                y_clusters[y_labels[i]] += y_points[i]
-                num_y_clusters[y_labels[i]] += 1
-
     y_averages = []
-    for i in range(len(y_clusters)):
-        y_averages.append(y_clusters[i] / num_y_clusters[i])
+
+    if vertical_lines is not None:
+        x_points = []
+
+        # this adds the end points. should it instead be the midpoint?
+        for line in vertical_lines:
+            # x1, y1, x2, y2 = line[0]
+            x1, y1, x2, y2 = line
+            x_points.append(x1)
+            x_points.append(x2)
+
+            x_points_2d = np.array(x_points).reshape(-1, 1)
+
+            dbscan = DBSCAN(eps=10, min_samples=2)
+            x_labels = dbscan.fit_predict(x_points_2d)
+            #print("x_labels: ", x_labels)
+
+            # take average of clusters
+            x_clusters = {}
+            num_x_clusters = {}
+            for i in range(len(x_labels)):
+                if x_labels[i] != -1:
+                    if x_labels[i] not in x_clusters:
+                        x_clusters[x_labels[i]] = 0
+                    if x_labels[i] not in num_x_clusters:
+                        num_x_clusters[x_labels[i]] = 0
+
+                        x_clusters[x_labels[i]] += x_points[i]
+                        num_x_clusters[x_labels[i]] += 1
+
+            for i in range(len(x_clusters)):  # add averaging (clustered) lines to list
+                x_averages.append(x_clusters[i] / num_x_clusters[i])
+
+            for i in range(len(x_labels)):  # add "noise" (non-cluster) lines to list
+                if x_labels[i] == -1:
+                    x_averages.append(x_points[i])
+
+    if horizontal_lines is not None:
+        y_points = []
+
+        for line in horizontal_lines:
+            #x1, y1, x2, y2 = line[0]
+            x1, y1, x2, y2 = line
+            y_points.append(y1)
+            y_points.append(y2)
+
+        y_points_2d = np.array(y_points).reshape(-1, 1)
+
+        # pass to DBSCAN
+        dbscan = DBSCAN(eps=10, min_samples=2)
+        y_labels = dbscan.fit_predict(y_points_2d)
+        #print("y_labels: ", y_labels)
+
+
+        y_clusters = {}
+        num_y_clusters = {}
+        for i in range(len(y_labels)):
+            if y_labels[i] != -1:
+                if y_labels[i] not in y_clusters:
+                    y_clusters[y_labels[i]] = 0
+                if y_labels[i] not in num_y_clusters:
+                    num_y_clusters[y_labels[i]] = 0
+
+                    y_clusters[y_labels[i]] += y_points[i]
+                    num_y_clusters[y_labels[i]] += 1
+
+        for i in range(len(y_clusters)):
+            y_averages.append(y_clusters[i] / num_y_clusters[i])
+
+        for i in range(len(y_labels)): # add "noise" (non-cluster) lines to list
+            if y_labels[i] == -1:
+                y_averages.append(y_points[i])
 
     return x_averages, y_averages
+
+# x_averages, y_averages = average_clusters(vertical_lines, horizontal_lines)
+#
+# dbscan_image = sobel_indiv_lines.copy()
+# height, width = dbscan_image.shape[:2]
+#
+# for i in range(len(x_averages)):
+#     cv2.line(dbscan_image, (int(x_averages[i]), 0), (int(x_averages[i]), height), (255, 255, 0), 2)
+#
+# for i in range(len(y_averages)):
+#     cv2.line(dbscan_image, (0, int(y_averages[i])), (width, int(y_averages[i])), (255, 255, 0), 2)
+#
+# cv2.imwrite('dbscan_sobel.jpg', dbscan_image)
 
 
 def merge_inline(lines, epsilon):
@@ -269,8 +302,7 @@ def merge_inline(lines, epsilon):
         merged_lines (list): list of merged lines
     """
     merged_lines = []
-    print('number of lines: ' + str(len(lines)))
-    print(len(lines))
+
     x1, y1, x2, y2 = lines[0]
     if abs(x2 - x1) < abs(y2 - y1):                                # x values are closer than y values
         #sorted_lines = sorted(lines, key=lambda line: min(x1, x2)) # sort by smalled x-coord
@@ -376,6 +408,16 @@ def estimate_interval(lines, epsilon):
     Returns:
         likely_interval (int): the voted interval
     """
+    # lines = average_clusters(horizontal_lines, epsilon)
+    #
+    # _, y_lines = lines
+    # print(y_lines)
+    # x1, y1, x2, y2 = y_lines
+    # if abs(x2 - x1) < abs(y2 - y1): # case lines are vertical
+    #     line_orientation = 0
+    # else:
+    #     line_orientation = 1
+
     adj_intervals = []
     votes = {}
 
@@ -386,7 +428,7 @@ def estimate_interval(lines, epsilon):
         line_orientation = 1
 
     # record all adjacent intervals
-    for i in range(len(lines)-1):
+    for i in range(len(lines) - 1):
         adj_intervals.append(int(abs(lines[i+1][line_orientation] - lines[i][line_orientation])))
 
     # average intervals within epsilon and round
@@ -414,6 +456,7 @@ def estimate_interval(lines, epsilon):
     candidate_intervals = list(votes.keys())
 
     # go through all other (non-adjacent) intervals and check for multiples of highest voted interval
+
     for i in range(len(lines) - 2):
         for j in range(i + 2, len(lines)):  # j starts from i+2 to avoid adjacent intervals
             nonadj_interval = int(abs(lines[j][line_orientation] - lines[i][line_orientation]))
@@ -434,9 +477,10 @@ def estimate_interval(lines, epsilon):
                 if abs(nonadj_interval % candidate_interval) < relative_epsilon:
                     votes[candidate_interval] += 1
 
+    # for i in range(len(lines) - 2):
+    #     for j in range(i + 2, len(lines)):  # j starts from i+2 to avoid adjacent intervals
+    #         nonadj_interval = int(abs(lines[j][line_orientation] - lines[i][line_orientation]))
 
-    for i in range(len(lines) - 2):
-        for j in range((i + 2), len(lines)):
 
 
 
@@ -472,6 +516,7 @@ def estimate_interval(lines, epsilon):
     # need to record all the lines (or at least intervals) voting for each interval, then average the interval value they vote for
 
     return likely_interval # return confidence?
+
 
 def estimate_intersection(vertical_lines, horizontal_lines, interval, shape):
     """
@@ -537,7 +582,6 @@ def estimate_intersection(vertical_lines, horizontal_lines, interval, shape):
         scores_intersection[intersection] = score_combined
         # scores_x[x] = score_x
         # scores_y[y] = score_y
-    print('scores intersection: ' + str(len(scores_intersection)))
     intersection = min(scores_intersection, key=scores_intersection.get)
     return intersection
 
@@ -608,13 +652,9 @@ def detect_grid(image):
     Estimate intervals and intersection.
 
     """
-    edge_type = 'sobel'
-    #edge_type = 'canny'
 
     # length_threshold = 100
-    print(image.shape)
     length_threshold = max(image.shape) * .05
-    print(length_threshold)
 
     image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
@@ -635,22 +675,24 @@ def detect_grid(image):
 
 
     lines_sobel_x = color_edges_sobel_x.copy()
-    vertical_lines, _ = filter_horiz_vert(sobel_x_lines)
+    sobel_x_lines = np.squeeze(sobel_x_lines) # houghlinep returns a 3d array
+    vertical_lines, _ = filter_vert_horiz(sobel_x_lines)
     # print('num vert: ' + str(len(vertical_lines)))
     # print('num hor: ' + str(len(horizontal_lines)))
-    vertical_lines = merge_inline(vertical_lines, 10)
+    vertical_lines = merge_inline(vertical_lines, 5)
     #horizontal_lines = merge_inline(horizontal_lines, 10)
     vertical_lines = filter_length(vertical_lines, length_threshold)
     #horizontal_lines = filter_length(horizontal_lines, length_threshold)
-    #draw_hough(vertical_lines, horizontal_lines, lines_sobel_x)
+    draw_hough(vertical_lines, lines_sobel_x)
 
     lines_sobel_y = color_edges_sobel_y.copy()
-    _, horizontal_lines = filter_horiz_vert(sobel_y_lines)
+    sobel_y_lines = np.squeeze(sobel_y_lines) # houghlinep returns a 3d array
+    _, horizontal_lines = filter_vert_horiz(sobel_y_lines)
     #vertical_lines = merge_inline(vertical_lines, 10)
-    horizontal_lines = merge_inline(horizontal_lines, 10)
+    horizontal_lines = merge_inline(horizontal_lines, 5)
     #vertical_lines = filter_length(vertical_lines, length_threshold)
     horizontal_lines = filter_length(horizontal_lines, length_threshold)
-    #draw_hough(vertical_lines, horizontal_lines, lines_sobel_y)
+    draw_hough(horizontal_lines, lines_sobel_y)
 
     # lines_sobel = image_color.copy() # pre-hough sobel combine (anded)
     # vertical_lines, horizontal_lines = filter_horiz_vert(lines_sobel)
@@ -659,16 +701,17 @@ def detect_grid(image):
     # draw_hough(vertical_lines, horizontal_lines, sobel_lines)
 
     lines_sobel_xy = cv2.cvtColor(cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR) # post-hough sobel combine
-    _, horizontal_lines = filter_horiz_vert(sobel_y_lines)
-    vertical_lines, _ = filter_horiz_vert(sobel_x_lines)
-    vertical_lines = merge_inline(vertical_lines, 10)
-    horizontal_lines = merge_inline(horizontal_lines, 10)
+    _, horizontal_lines = filter_vert_horiz(sobel_y_lines)
+    vertical_lines, _ = filter_vert_horiz(sobel_x_lines)
+    vertical_lines = merge_inline(vertical_lines, 5)
+    horizontal_lines = merge_inline(horizontal_lines, 5)
     # vertical_lines = filter_length(vertical_lines, length_threshold)
     # horizontal_lines = filter_length(horizontal_lines, length_threshold)
-    draw_hough(vertical_lines, horizontal_lines, lines_sobel_xy)
-    if edge_type == 'sobel':
-        interval = estimate_interval(horizontal_lines, 1)  # correct for map2 is 72
-        intersection = estimate_intersection(vertical_lines, horizontal_lines, interval, lines_sobel_xy.shape)
+    lines = vertical_lines + horizontal_lines
+    draw_hough(lines, lines_sobel_xy)
+    lines = vertical_lines + horizontal_lines
+    interval_sobel = estimate_interval(lines, 1)  # correct for map2 is 72
+    intersection_sobel = estimate_intersection(vertical_lines, horizontal_lines, interval_sobel, lines_sobel_xy.shape)
     # draw_grid((198, 286), 72, sobel_indiv_lines) # 214, 1656, 1728
     #draw_grid(intersection, interval, lines_sobel_xy)
 
@@ -686,16 +729,17 @@ def detect_grid(image):
 
 
     lines_canny = color_edges_canny.copy() # copy?
-    vertical_lines, horizontal_lines = filter_horiz_vert(canny_lines)
-    vertical_lines = merge_inline(vertical_lines, 10)
-    horizontal_lines = merge_inline(horizontal_lines, 10)
+    canny_lines = np.squeeze(canny_lines) # houghlinep returns a 3d array
+    vertical_lines, horizontal_lines = filter_vert_horiz(canny_lines)
+    vertical_lines = merge_inline(vertical_lines, 4)
+    horizontal_lines = merge_inline(horizontal_lines, 4)
     vertical_lines = filter_length(vertical_lines, length_threshold)
     horizontal_lines = filter_length(horizontal_lines, length_threshold)
-    draw_hough(vertical_lines, horizontal_lines, lines_canny)
-    if edge_type == 'canny':
-        interval = estimate_interval(horizontal_lines, 1)  # correct for map2 is 72
-        # need to estimate for vertical
-        intersection = estimate_intersection(vertical_lines, horizontal_lines, interval, lines_canny.shape)
+    lines = vertical_lines + horizontal_lines
+    draw_hough(lines, lines_canny)
+    interval_canny = estimate_interval(horizontal_lines, 1)  # correct for map2 is 72
+    # need to estimate for vertical
+    intersection_canny = estimate_intersection(vertical_lines, horizontal_lines, interval_canny, lines_canny.shape)
     #draw_grid(intersection, interval, canny_grid_lines)
 
     # save line image
@@ -707,7 +751,7 @@ def detect_grid(image):
     # cv2.imwrite('lines_edges_or.jpg', edges_or_lines)
     # cv2.imwrite('lines_edges_and.jpg', edges_and_lines)
 
-    return intersection, interval
+    return intersection_sobel, interval_sobel, intersection_canny, interval_canny
 
 def draw_grid(intersection, interval, image):
     """
@@ -757,15 +801,25 @@ def draw_grid(intersection, interval, image):
 # load image
 image = cv2.imread('map2.jpg')
 
-intersection, interval = detect_grid(image.copy())
-detected_grid = cv2.cvtColor(cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR)
-draw_grid(intersection, interval, detected_grid)
-cv2.imwrite('detected_grid.jpg', detected_grid)
+intersection_sobel, interval_sobel, intersection_canny, interval_canny = detect_grid(image.copy())
 
+grid_sobel = cv2.cvtColor(cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR)
+draw_grid(intersection_sobel, interval_sobel, grid_sobel)
+cv2.imwrite('grid_sobel.jpg', grid_sobel)
+
+grid_canny = grid_sobel = cv2.cvtColor(cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR)
+draw_grid(intersection_canny, interval_canny, grid_canny)
+cv2.imwrite('grid_canny.jpg', grid_canny)
 
 # color_canny = cv2.cvtColor(edges_canny.copy(), cv2.COLOR_GRAY2BGR)
 # draw_grid((800,700), 100, color_canny)
 # cv2.imwrite('grid_test.jpg', color_canny)
+
+# get hough lines
+# sort/filter lines
+# cluster lines
+# merge lines
+# interval vote
 
 
 
@@ -790,21 +844,6 @@ cv2.imwrite('detected_grid.jpg', detected_grid)
 # plt.axis('off')
 # plt.show()
 
-
-
-
-# x_averages, y_averages = average_clusters(vertical_lines, horizontal_lines)
-#
-# dbscan_image = sobel_indiv_lines.copy()
-# height, width = dbscan_image.shape[:2]
-#
-# for i in range(len(x_averages)):
-#     cv2.line(dbscan_image, (int(x_averages[i]), 0), (int(x_averages[i]), height), (255, 255, 0), 2)
-#
-# for i in range(len(y_averages)):
-#     cv2.line(dbscan_image, (0, int(y_averages[i])), (width, int(y_averages[i])), (255, 255, 0), 2)
-#
-# cv2.imwrite('dbscan_sobel.jpg', dbscan_image)
 
 
 
