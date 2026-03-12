@@ -42,3 +42,6 @@ htmlcov/
 # Ignore IDE specific files
 .vscode/  # If you use VSCode alongside PyCharm
 *.iml
+
+# Ignore images
+*.jpg
