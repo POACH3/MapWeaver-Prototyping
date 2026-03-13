@@ -145,11 +145,11 @@ def generate_image(img_num, color=False):
         circle_brightness = random.randint(0, 255)
         cv2.circle(image, center, radius, circle_brightness, -1)
 
-        return lines
-
     # Save the image as a .jpg file
     file_path = os.path.join('synthetic_dataset', f'image{img_num}.jpg')
     cv2.imwrite(file_path, image)
+
+    return lines
 
 
 
