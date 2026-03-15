@@ -92,14 +92,6 @@ def generate_image(img_num, color=False):
         noisy_image = add_gaussian_noise(image, mean=0, sigma=variance)
         image = noisy_image
 
-        # grid
-        interval = random.randint(30,int(img_size / 4))
-        intersection = (random.randint(0, img_size), random.randint(0, img_size))
-        line_color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
-        line_thickness = random.randint(1,3)
-
-        lines = draw_grid(intersection, interval, line_color, line_thickness, image)
-
         # occlusion
         points = []
         num_points = random.randint(3,10)
@@ -115,20 +107,20 @@ def generate_image(img_num, color=False):
         circle_color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
         cv2.circle(image, center, radius, circle_color, -1)
 
+        # grid
+        interval = random.randint(30,int(img_size / 4))
+        intersection = (random.randint(0, img_size), random.randint(0, img_size))
+        line_color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+        line_thickness = random.randint(1,3)
+
+        lines = draw_grid(intersection, interval, line_color, line_thickness, image)
+
     else:
         # background
         bg_brightness = random.randint(0, 255)
         image = np.full((img_size, img_size), bg_brightness, dtype=np.uint8)
         noisy_image = add_gaussian_noise(image, mean=0, sigma=50)
         image = noisy_image
-
-        # grid
-        interval = random.randint(30, int(img_size / 4))
-        intersection = (random.randint(0, img_size), random.randint(0, img_size))
-        line_brightness = random.randint(0, 255)
-        line_thickness = random.randint(1, 3)
-
-        lines = draw_grid(intersection, interval, line_brightness, line_thickness, image)
 
         # occlusion
         points = []
@@ -144,6 +136,14 @@ def generate_image(img_num, color=False):
         radius = random.randint(10, int(img_size / 2))
         circle_brightness = random.randint(0, 255)
         cv2.circle(image, center, radius, circle_brightness, -1)
+
+        # grid
+        interval = random.randint(30, int(img_size / 4))
+        intersection = (random.randint(0, img_size), random.randint(0, img_size))
+        line_brightness = random.randint(0, 100)
+        line_thickness = random.randint(1, 3)
+
+        lines = draw_grid(intersection, interval, line_brightness, line_thickness, image)
 
     # Save the image as a .jpg file
     file_path = os.path.join('synthetic_dataset', f'image{img_num}.jpg')
