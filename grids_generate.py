@@ -145,15 +145,18 @@ def generate_image(img_num, color=False):
 
         lines = draw_grid(intersection, interval, line_brightness, line_thickness, image)
 
-    # Save the image as a .jpg file
-    file_path = os.path.join('synthetic_dataset', f'image{img_num}.jpg')
+    # Save the image as a .png file
+    file_path = os.path.join('synthetic_dataset', f'image{img_num}.png')
     cv2.imwrite(file_path, image)
 
     return lines
 
 
 
-size_dataset = 10
+size_dataset = 10 # number of generated samples
+size_image = 512  # pixel dimensions
+crop_
+
 labels = []
 for i in range(1, size_dataset + 1):
     lines = generate_image(i)

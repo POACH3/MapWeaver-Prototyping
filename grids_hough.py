@@ -22,10 +22,14 @@ NOTES:
 
 """
 
+import os
+
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
+
+OUTPUT_DIR = 'grid_output'
 
 
 
@@ -647,10 +651,209 @@ def edges(image):
 
     return edges_canny, edges_sobel_x, edges_sobel_y
 
-def detect_grid(image):
+def alg2_autocorrelation(signal):
     """
-    Estimate intervals and intersection.
+    Normalized autocorrelation of a 1-D signal via FFT.
 
+    Args:
+        signal (numpy.ndarray): 1-D signal.
+
+    Returns:
+        acf (numpy.ndarray): same length as signal, acf[0] == 1 (unless
+            the signal is constant, in which case acf is all zero).
+    """
+    signal = np.asarray(signal, dtype=float)
+    signal = signal - signal.mean()
+    n = len(signal)
+
+    # zero-pad to 2n so the FFT computes a linear (not circular) autocorrelation
+    spectrum = np.fft.rfft(signal, n=2 * n)
+    acf = np.fft.irfft(spectrum * np.conj(spectrum), n=2 * n)[:n]
+
+    if acf[0] == 0:
+        return acf
+    return acf / acf[0]
+
+
+def alg2_dominant_period(signal, min_period, max_period, harmonics=4):
+    """
+    Finds the strongest repeat distance ("period") of a 1-D signal within
+    [min_period, max_period].
+
+    A periodic pulse train's autocorrelation is itself periodic, so a true
+    fundamental period P shows a peak not just at P but at every multiple
+    of P too (2P, 3P, ...). Picking whichever single lag has the tallest
+    peak can therefore lock onto one of those multiples instead of P
+    itself. This is the same "octave error" pitch-detection algorithms
+    guard against, and the fix is the same: score each candidate period by
+    averaging the autocorrelation across its own first few harmonics
+    (P, 2P, 3P, ...) rather than by its own single peak. A true
+    fundamental is strong at all of them; one of its multiples is only
+    strong at the subset that are themselves multiples of it, so it
+    scores lower once its missing harmonics are averaged in.
+
+    Args:
+        signal (numpy.ndarray): 1-D signal to search for periodicity in.
+        min_period (int): shortest period to consider, in samples.
+        max_period (int): longest period to consider, in samples.
+        harmonics (int): how many multiples of each candidate period to
+            average the autocorrelation across.
+
+    Returns:
+        period (int | None): the best-scoring period, or None if the
+            signal is too short to search the given range at all.
+        strength (float): the (0..1-ish) harmonic-averaged autocorrelation
+            score at that period — used as a confidence score.
+    """
+    acf = alg2_autocorrelation(signal)
+    max_period = min(max_period, len(acf) - 1)
+    if min_period >= max_period:
+        return None, 0.0
+
+    best_period = None
+    best_score = -np.inf
+    for period in range(min_period, max_period + 1):
+        lags = [k * period for k in range(1, harmonics + 1) if k * period < len(acf)]
+        score = sum(acf[lag] for lag in lags) / len(lags)
+        if score > best_score:
+            best_score = score
+            best_period = period
+
+    strength = float(max(best_score, 0.0))
+
+    return best_period, strength
+
+
+def alg2_best_phase(signal, period):
+    """
+    Finds the offset (0..period-1) whose evenly-spaced samples
+    (signal[offset], signal[offset + period], signal[offset + 2*period], ...)
+    sum to the most edge energy — i.e. a comb filter matched to `period`,
+    used to locate one reference grid line along this axis once the
+    spacing itself is known.
+
+    Args:
+        signal (numpy.ndarray): 1-D signal (same one passed to
+            alg2_dominant_period).
+        period (int): the grid spacing along this axis.
+
+    Returns:
+        offset (int): the best-aligned starting position, 0..period-1.
+    """
+    best_offset = 0
+    best_score = -np.inf
+    for offset in range(period):
+        score = signal[offset::period].sum()
+        if score > best_score:
+            best_score = score
+            best_offset = offset
+
+    return best_offset
+
+
+def detect_alg2(image, debug=False):
+    """
+    Autocorrelation-based grid pitch detection — a different approach from
+    detect_grid's Hough-line voting rather than a fix to it.
+
+    detect_grid detects individual Hough line segments and then votes on
+    their spacing. On a real battle map, walls, room outlines, and texture
+    detail generate far more surviving Hough-line candidates than the grid
+    itself, so the interval vote gets swamped by noise.
+
+    This algorithm never detects individual lines at all. It collapses the
+    vertical-edge map into a single 1-D signal by summing edge strength
+    down each column (and the horizontal-edge map by summing across each
+    row), then autocorrelates each 1-D signal to find its dominant period.
+    A real grid line runs the full height/width of the map, so it
+    reinforces every row/column of the projection; a short wall or room
+    edge only nudges a handful of rows/columns and mostly washes out of
+    the sum rather than dominating it — the periodic grid signal survives
+    aggregation in a way individual noisy line detections don't.
+
+    Once the period (grid interval) is known for an axis, the phase
+    (offset) is found by testing every possible starting position 0..P-1
+    and keeping whichever one's evenly-spaced samples sum to the most edge
+    energy — a comb filter matched to the detected period.
+
+    Args:
+        image (numpy.ndarray): BGR image to analyze.
+        debug (bool): when True, plots the two 1-D projection signals and
+            writes the resulting grid overlay to disk.
+
+    Returns:
+        intersection (tuple): (x, y) of a reference grid crossing, in pixels.
+        interval (int): grid spacing in pixels.
+        confidence (float): 0..1 estimate of how trustworthy the result is
+            — the autocorrelation strength at the detected period,
+            averaged across both axes.
+    """
+    height, width = image.shape[:2]
+    image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(image_gray, (5, 5), 1)
+
+    sobel_x = cv2.convertScaleAbs(cv2.Sobel(blurred, cv2.CV_64F, 1, 0, ksize=3))  # vertical edges
+    sobel_y = cv2.convertScaleAbs(cv2.Sobel(blurred, cv2.CV_64F, 0, 1, ksize=3))  # horizontal edges
+
+    col_signal = sobel_x.sum(axis=0).astype(float)  # vertical-edge energy per column
+    row_signal = sobel_y.sum(axis=1).astype(float)  # horizontal-edge energy per row
+
+    min_period = 8  # grid squares smaller than this aren't a useful battle-map grid anyway
+    max_period = min(width, height) // 3  # require the grid to repeat at least 3 times
+
+    interval_x, strength_x = alg2_dominant_period(col_signal, min_period, max_period)
+    interval_y, strength_y = alg2_dominant_period(row_signal, min_period, max_period)
+
+    if not interval_x and not interval_y:
+        raise ValueError("detect_alg2: no periodic grid signal found on either axis")
+    elif interval_x and interval_y:
+        interval = int(round((interval_x + interval_y) / 2))
+        confidence = (strength_x + strength_y) / 2
+    elif interval_x:
+        interval, confidence = interval_x, strength_x
+    else:
+        interval, confidence = interval_y, strength_y
+
+    offset_x = alg2_best_phase(col_signal, interval)
+    offset_y = alg2_best_phase(row_signal, interval)
+    intersection = (offset_x, offset_y)
+
+    if debug:
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+        fig, axes = plt.subplots(2, 1, figsize=(10, 6))
+        axes[0].plot(col_signal)
+        axes[0].set_title(f'column signal (vertical edges) — interval_x={interval_x}, strength={strength_x:.2f}')
+        axes[1].plot(row_signal)
+        axes[1].set_title(f'row signal (horizontal edges) — interval_y={interval_y}, strength={strength_y:.2f}')
+        fig.tight_layout()
+        fig.savefig(os.path.join(OUTPUT_DIR, 'alg2_signals.png'))
+        plt.close(fig)
+
+        grid_overlay = image.copy()
+        draw_grid(intersection, interval, grid_overlay)
+        cv2.imwrite(os.path.join(OUTPUT_DIR, 'grid_alg2.jpg'), grid_overlay)
+
+    return intersection, interval, confidence
+
+
+def detect_alg1(image, debug=False):
+    """
+    Hough-transform pipeline: estimate grid interval and a reference
+    intersection for an image, using both Canny and Sobel edge maps.
+
+    Args:
+        image (numpy.ndarray): BGR image to analyze.
+        debug (bool): when True, write the intermediate Hough-line images
+            and the detected grid overlay to disk. When False (the
+            default) nothing touches disk.
+
+    Returns:
+        intersection (tuple): (x, y) of a reference grid crossing, in pixels.
+        interval (int): grid spacing in pixels.
+        confidence (float | None): 0..1 estimate of how trustworthy the
+            result is. Currently always None — not computed yet; the slot
+            exists so callers can depend on the shape.
     """
 
     # length_threshold = 100
@@ -742,16 +945,61 @@ def detect_grid(image):
     intersection_canny = estimate_intersection(vertical_lines, horizontal_lines, interval_canny, lines_canny.shape)
     #draw_grid(intersection, interval, canny_grid_lines)
 
-    # save line image
-    cv2.imwrite('lines_canny.jpg', lines_canny)
-    # cv2.imwrite('lines_sobel.jpg', sobel_lines)
-    cv2.imwrite('lines_sobel_x.jpg', lines_sobel_x)
-    cv2.imwrite('lines_sobel_y.jpg', lines_sobel_y)
-    cv2.imwrite('lines_sobel.jpg', lines_sobel_xy)
-    # cv2.imwrite('lines_edges_or.jpg', edges_or_lines)
-    # cv2.imwrite('lines_edges_and.jpg', edges_and_lines)
+    # temporary return values... finish implementing a real return calculation
+    intersection = intersection_sobel  # FIXME: intersection_canny/interval_canny are computed but discarded
+    interval = interval_sobel          # FIXME
+    confidence = None
 
-    return intersection_sobel, interval_sobel, intersection_canny, interval_canny
+    # Debug mode only: everything below writes to disk.
+    if debug:
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        cv2.imwrite(os.path.join(OUTPUT_DIR, 'lines_canny.jpg'), lines_canny)
+        cv2.imwrite(os.path.join(OUTPUT_DIR, 'lines_sobel_x.jpg'), lines_sobel_x)
+        cv2.imwrite(os.path.join(OUTPUT_DIR, 'lines_sobel_y.jpg'), lines_sobel_y)
+        cv2.imwrite(os.path.join(OUTPUT_DIR, 'lines_sobel.jpg'), lines_sobel_xy)
+
+        grid_overlay = image.copy()
+        draw_grid(intersection, interval, grid_overlay)
+        cv2.imwrite(os.path.join(OUTPUT_DIR, 'grid_alg1.jpg'), grid_overlay)
+
+    return intersection, interval, confidence
+
+
+# Every entry must take (image, debug=False) and return
+# (intersection, interval, confidence) — see detect_alg1's docstring for
+# the exact shape. Add new candidate algorithms as their own detect_algN
+# function, then register them here.
+ALGORITHMS = {
+    "alg1": detect_alg1,
+    "alg2": detect_alg2,
+}
+
+
+def detect_grid(image, algorithm="alg1", debug=False):
+    """
+    Dispatch to one of the registered grid-detection algorithms.
+
+    Args:
+        image (numpy.ndarray): BGR image to analyze.
+        algorithm (str): key into ALGORITHMS selecting which implementation
+            to run. Defaults to "alg1".
+        debug (bool): forwarded to the selected algorithm.
+
+    Returns:
+        Whatever the selected algorithm returns — see detect_alg1's
+        docstring for the (intersection, interval, confidence) shape
+        shared by every entry in ALGORITHMS.
+    """
+    try:
+        implementation = ALGORITHMS[algorithm]
+    except KeyError:
+        raise ValueError(
+            f"Unknown grid-detection algorithm '{algorithm}'. "
+            f"Available: {sorted(ALGORITHMS)}"
+        )
+
+    return implementation(image, debug=debug)
+
 
 def draw_grid(intersection, interval, image):
     """
@@ -798,22 +1046,25 @@ def draw_grid(intersection, interval, image):
 
 
 
-# load image
-image = cv2.imread('map2.jpg')
+# Running this file directly calls the dispatcher with debug=True, so the
+# selected algorithm writes its own intermediate/debug images to disk.
+# Pass an image name and/or algorithm name to compare candidates, e.g.:
+#   python grids_hough.py --image map2 --algorithm alg2
+if __name__ == "__main__":
+    import argparse
 
-intersection_sobel, interval_sobel, intersection_canny, interval_canny = detect_grid(image.copy())
+    parser = argparse.ArgumentParser(description="Detect a grid overlay in a map image.")
+    parser.add_argument("--image", default="map1", help="image filename, without extension, in the working directory (default: map1)")
+    parser.add_argument("--algorithm", default="alg1", choices=sorted(ALGORITHMS), help="algorithm to run (default: alg1)")
+    args = parser.parse_args()
 
-grid_sobel = cv2.cvtColor(cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR)
-draw_grid(intersection_sobel, interval_sobel, grid_sobel)
-cv2.imwrite('grid_sobel.jpg', grid_sobel)
+    image = cv2.imread(f'{args.image}.jpg')
+    if image is None:
+        raise FileNotFoundError(f"Could not read '{args.image}.jpg'")
 
-grid_canny = grid_sobel = cv2.cvtColor(cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR)
-draw_grid(intersection_canny, interval_canny, grid_canny)
-cv2.imwrite('grid_canny.jpg', grid_canny)
+    intersection, interval, confidence = detect_grid(image.copy(), algorithm=args.algorithm, debug=True)
 
-# color_canny = cv2.cvtColor(edges_canny.copy(), cv2.COLOR_GRAY2BGR)
-# draw_grid((800,700), 100, color_canny)
-# cv2.imwrite('grid_test.jpg', color_canny)
+    print(f"image={args.image} algorithm={args.algorithm} intersection={intersection} interval={interval} confidence={confidence}")
 
 # get hough lines
 # sort/filter lines
